@@ -156,7 +156,7 @@ data HDL
   = SystemVerilog
   | Verilog
   | VHDL
-  deriving (Eq, Show, Read, Data, Generic, NFData, Hashable, Lift)
+  deriving (Eq, Enum, Bounded, Show, Read, Data, Generic, NFData, Hashable, Lift)
 
 -- | The 'Primitive' constructor instructs the clash compiler to look for primitive
 -- HDL templates in the indicated directory. 'InlinePrimitive' is equivalent but
