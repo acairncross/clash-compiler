@@ -58,28 +58,20 @@ xilinxDiffClock (XilinxDiffClockI arg1 arg2 arg3 arg4)
 
 -}
 
-{-# LANGUAGE MagicHash #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE AllowAmbiguousTypes   #-}
-{-# LANGUAGE BangPatterns          #-}
-{-# LANGUAGE CPP                   #-}
-{-# LANGUAGE ConstraintKinds       #-}
-{-# LANGUAGE DeriveFunctor         #-}
-{-# LANGUAGE DeriveLift            #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE NumericUnderscores    #-}
-{-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE PatternSynonyms       #-}
-{-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TupleSections         #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE ViewPatterns          #-}
+{-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE CPP                 #-}
+{-# LANGUAGE ConstraintKinds     #-}
+{-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE DeriveLift          #-}
+{-# LANGUAGE MagicHash           #-}
+{-# LANGUAGE QuasiQuotes         #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE ViewPatterns        #-}
 
 module Clash.Primitives.Scaffold
   ( makeScaffold
