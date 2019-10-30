@@ -207,6 +207,7 @@ instantiate p@(ScaffoldPort Netlist.Out _ n _ _ _) e
   = ( Identifier (T.pack n) Nothing
     , Netlist.Out, toClashType p, e)
 
+-- | Build a Clash-Haskell representation of an HDL primitive
 scaffoldTemplate
   :: Backend s
   => String
@@ -261,6 +262,8 @@ scaffoldTF used primitiveName parameters domains i o = TemplateFunction
   (const True)
   (scaffoldTemplate primitiveName parameters domains i o)
 
+-- | Annotations to associate our 'TemplateFunction's with our Haskell
+-- functions.
 scaffoldAnnotation :: Name -> Name -> HDL -> Q Exp
 scaffoldAnnotation n ntf hdl =
   [|InlinePrimitive hdl j|]
@@ -274,6 +277,8 @@ scaffoldAnnotation n ntf hdl =
           }]
       |]
 
+-- | Builds the Haskell datatypes "datatypeNameI" and "datatypeNameO",
+-- both of which are parametric on the domains of the ports.
 makeDatatypes
   :: ScaffoldDesc
   -> ([TyVarBndr],[Name])
@@ -309,6 +314,7 @@ makeDatatypes desc (kinds,domains) (i,ni) (o,no) =
   build nd fields derive = DataD [] nd kinds [(RecC nd fields)] (drv derive)
 #endif
 
+-- | Creates the Clash expressions for the HDL primitives
 makeTemplate
   :: ScaffoldDesc
   -> [Parameter]
@@ -335,17 +341,22 @@ makeTemplate desc parameters domains i o = do
     , FunD (templateName desc) [Clause [] (NormalB blackboxExpr) []]
     ] <> blackboxAnn
 
-makeWrapper
+-- | Build the Haskell functions "functionName" and "functionName#", and mark
+-- them as `NOINLINE`. "functionName" takes "datatypeNameI" as argument, calling
+-- "functionName#" and returning "datatypeNameO". "functionName#" constructs its
+-- return value "datatypeNameO" by calling 'clockGen' for Clocks and 'pure'
+-- 'def' for 'BitVector's.
+makeHaskellFuncs
   :: ScaffoldDesc
   -> ([TyVarBndr], [Name])
   -> ([ScaffoldPort], [Name])
   -> [ScaffoldPort]
   -> [Dec]
-makeWrapper desc (kinds, domains) (i,ni) o =
+makeHaskellFuncs desc (kinds, domains) (i,ni) o =
   [ SigD (functionName# desc)
     $ ForallT kinds constraints
     $ foldr1 (AppT . AppT ArrowT) (fmap ty i ++ [retTy])
-  , FunD (functionName# desc) [Clause bangs (NormalB ret) []]
+  , FunD (functionName# desc) [Clause bangs (NormalB buildOutput) []]
   , PragmaD (InlineP (functionName# desc) NoInline FunLike AllPhases)
   , SigD (functionName desc)
     $ ForallT kinds constraints
@@ -357,18 +368,20 @@ makeWrapper desc (kinds, domains) (i,ni) o =
   , PragmaD (InlineP (functionName desc) NoInline FunLike AllPhases)
   ]
  where
-  arg = (mkName "_arg")
-  pd = (VarE 'pure) `AppE` (VarE 'def)
+  arg = mkName "_arg"
   bangs = replicate (length i) (BangP WildP)
-  ret = foldl AppE (ConE (datatypeNameO desc))
-          $ gen . isClock <$> o
-  gen True = VarE 'C.clockGen
-  gen False = pd
+  buildOutput
+      = foldl AppE (ConE (datatypeNameO desc))
+      . fmap (\x -> if isClock x then clock else default_)
+      $ o
+  clock = VarE 'C.clockGen
+  default_ = (VarE 'pure) `AppE` (VarE 'def)
   constraints = AppT (ConT ''C.KnownDomain) . VarT <$> domains
   applyDomains = flip (foldl AppT) (fmap VarT domains)
   retTy = applyDomains $ ConT $ datatypeNameO desc
   argTy = applyDomains $ ConT $ datatypeNameI desc
 
+-- | 'makeScaffold' but with an explicit record naming strategy. See 'makeScaffold'
 makeScaffold'
   :: (ScaffoldDesc -> ScaffoldPort -> Name)
   -> String
@@ -405,16 +418,70 @@ makeScaffold' portname nam@(n:ame) primitive' parameters ports' = do
 
   mappend (mconcat
    [ makeDatatypes desc (kinds,domains) (i,ni) (o,no)
-   , makeWrapper desc (kinds, domains) (i,ni) o
+   , makeHaskellFuncs desc (kinds, domains) (i,ni) o
    ]) <$> makeTemplate desc parameters domains i o
  where
   filterDir dir = filter ((dir==) . direction)
   collectDomains = foldl (\(ns, pss) (n',ps) -> (n':ns,ps<>pss)) ([],[])
 makeScaffold' _ _ _ _ _ = error "makeScaffold': Empty name given!"
 
-defaultRecords :: ScaffoldDesc -> ScaffoldPort -> Name
-defaultRecords _ port = mkName $ "_" <> name port
+-- | Prefix record names with an underscore
+defaultRecordNaming :: ScaffoldDesc -> ScaffoldPort -> Name
+defaultRecordNaming _ port = mkName $ "_" <> name port
 
+-- | Instantiates
+--   - Input and output datatypes, as well as a smart constructor for the input
+--     datatype
+--   - A 'TemplateFunction' for the primitive
+--   - A function taking the input packed into the input datatype
+--   - A function (suffixed with #) taking the individual arguments
+--
+-- For example:
+--
+-- @
+-- makeScaffold "xilinxDiffClock" "IBUFDS_GTE2"
+--   -- A list of parameters
+--   [ PBool "CLKRCV_TRST" True
+--   ]
+--
+--   -- A list of list of ports, corresponding to domains of signals
+--   -- Clocks will be lifted to the top of defitions
+--   [ [ ClkOut "O"
+--     , ClkIn "I"
+--     , In "dummy_signal1" 8
+--     , ClkIn "IB"
+--     ]
+--   , [ In "dummy_signal2" 40
+--     , Out "dummy_out1" 1
+--     ]
+--   ]
+--
+--  -- builds ===>
+--
+-- data XilinxDiffClockI dom1 dom2
+--   = XilinxDiffClockI
+--   { _I :: Clock dom1
+--   , _IB :: Clock dom1
+--   , _dummy_signal1 :: Signal dom1 (BitVector 8)
+--   , _dummy_signal2 :: Signal dom2 (BitVector 40)
+--   }
+-- data XilinxDiffClockO dom1 dom2
+--   = XilinxDiffClockI
+--   { _O :: Clock dom1
+--   , _dummy_out1 :: Signal dom2 (BitVector 1)
+--   }
+--
+-- -- Smart constructor taking only the clocks
+-- xilinxDiffClockI arg1 arg2 = XilinxDiffClockI arg1 arg2 (pure def) (pure def)
+--
+-- -- Haskell name tied to HDL instantiation
+-- xilinxDiffClock# arg1 arg2 arg3 arg4
+--   = XilinxDiffClockO clockGen (pure def)
+--
+-- -- A convenience function taking the input data type and calling the blackbox
+-- xilinxDiffClock (XilinxDiffClockI arg1 arg2 arg3 arg4)
+--   = xilinxDiffClock# arg1 arg2 arg3 arg4
+-- @
 makeScaffold
   :: String -- ^ generated haskell function name
   -> String -- ^ hdl primitive name
@@ -422,4 +489,4 @@ makeScaffold
   -> [[Port]]
   -> DecsQ
 makeScaffold
-  = makeScaffold' defaultRecords
+  = makeScaffold' defaultRecordNaming
