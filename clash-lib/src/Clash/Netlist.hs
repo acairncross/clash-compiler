@@ -73,6 +73,7 @@ import           Clash.Netlist.Util
 import           Clash.Primitives.Types           as P
 import           Clash.Util
 
+import Debug.Trace
 
 -- | Generate a hierarchical netlist out of a set of global binders with
 -- @topEntity@ at the top.
@@ -754,6 +755,10 @@ mkProjection mkDec bndr scrut altTy alt@(pat,v) = do
     nestModifier m Nothing           = m
     nestModifier (Just m1) (Just m2) = Just (Nested m1 m2)
 
+--filterCustomVoids
+--  :: [(HWType, Expr)]
+--  -> [FieldAnn]
+--  -> [(HWType, Expr)]
 
 -- | Generate an expression for a DataCon application occurring on the RHS of a let-binder
 mkDcApplication
@@ -776,10 +781,17 @@ mkDcApplication dstHType bndr dc args = do
   argHWTys            <- mapM coreTypeToHWTypeM' argTys
   -- Filter out the arguments of hwtype `Void` and only translate
   -- them to the intermediate HDL afterwards
-  let argsBundled   = zip argHWTys (zip args argTys)
-      (hWTysFiltered,argsFiltered) = unzip
+  let argsBundled = zip argHWTys (zip args argTys)
+      (hWTysFiltered, argsFiltered) = unzip
         (filter (maybe True (not . isVoid) . fst) argsBundled)
-  (argExprs,argDecls) <- fmap (second concat . unzip) $! mapM (\(e,t) -> mkExpr False (Left argNm) t e) argsFiltered
+
+  (argExprs, argDecls) <-
+    fmap
+      (second concat . unzip) $!
+      (mapM
+        (\(e,t) -> mkExpr False (Left argNm) t e)
+        argsFiltered)
+
   fmap (,argDecls) $! case (hWTysFiltered,argExprs) of
     -- Is the DC just a newtype wrapper?
     ([Just argHwTy],[argExpr]) | argHwTy == dstHType ->
@@ -795,6 +807,11 @@ mkDcApplication dstHType bndr dc args = do
       Product _ _ dcArgs ->
         case compare (length dcArgs) (length argExprs) of
           EQ -> return (HW.DataCon dstHType (DC (dstHType,0)) argExprs)
+          LT -> error $ $(curLoc) ++ "Over-applied constructor"
+          GT -> error $ $(curLoc) ++ "Under-applied constructor"
+      CustomProduct _ _ _ _ dcArgs ->
+        case compare (length dcArgs) (length argExprs) of
+          EQ -> return (HW.DataCon dstHType (DC (dstHType,0)) (traceShowId argExprs))
           LT -> error $ $(curLoc) ++ "Over-applied constructor"
           GT -> error $ $(curLoc) ++ "Under-applied constructor"
       Sum _ _ ->
