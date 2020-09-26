@@ -2192,11 +2192,17 @@ vfold f xs = dfold (Proxy @(VCons b)) f Nil xs
 -- <<1,2,3>,<1,2,3>,<1,2,3>>
 -- >>> rotateMatrix xss
 -- <<1,2,3>,<3,1,2>,<2,3,1>>
-smap :: forall k a b . KnownNat k => (forall l . SNat l -> a -> b) -> Vec k a -> Vec k b
-smap f xs = reverse
-          $ dfold (Proxy @(VCons b))
-                  (\sn x xs' -> f sn x :> xs')
-                  Nil (reverse xs)
+smap ::
+  forall n a b.
+  KnownNat n =>
+  (forall m. m + 1 <= n => SNat m -> a -> b) ->
+  Vec n a ->
+  Vec n b
+smap f xs' = reverse $ go (SNat :: SNat n) (reverse xs')
+  where
+    go :: m' <= n => SNat m' -> Vec m' a -> Vec m' b
+    go _ Nil = Nil
+    go m' (Cons x xs) = let m = m' `subSNat` d1 in Cons (f m x) (go m xs)
 {-# INLINE smap #-}
 
 instance (KnownNat n, BitPack a) => BitPack (Vec n a) where

@@ -565,8 +565,9 @@ instance (LockStep en a, KnownNat n) => LockStep (Vec n en) (Vec n a) where
           in  (xs,vals,rdy)
        ) `seqDF` parNDF (repeat stepLock)
 
-allReady :: KnownNat n
+allReady :: forall n
+          . KnownNat n
          => Bool
          -> Vec n (Vec (n+1) Bool)
          -> Vec n Bool
-allReady b vs = map (and . (b :>) . tail) (smap (flip rotateLeftS) vs)
+allReady b vs = map (and . (b :>) . tail) ((smap (flip rotateLeftS) vs) :: Vec n (Vec (n+1) Bool))
