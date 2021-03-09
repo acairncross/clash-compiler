@@ -1389,11 +1389,16 @@ simulate_lazy f = sample_lazy . f . fromList_lazy
 -- >>> hzToPeriod 240e6
 -- 4167
 --
+-- and for 250 MHz we get
+--
+-- >>> hzToPeriod 250e6
+-- 4000
+--
 -- __NB__: This function is /not/ synthesizable
 -- __NB__: This function is lossy. I.e., hzToPeriod . periodToHz /= id.
 hzToPeriod :: HasCallStack => Double -> Natural
 hzToPeriod freq | freq <= 0.0 = error "Frequency must be strictly positive"
-                | otherwise   = ceiling ((1.0 / freq) / 1.0e-12)
+                | otherwise   = ceiling ((1.0 / toRational freq) / 1.0e-12)
 
 -- | Calculate the frequence in __Hz__, given the period in __ps__
 --
@@ -1402,7 +1407,12 @@ hzToPeriod freq | freq <= 0.0 = error "Frequency must be strictly positive"
 -- >>> periodToHz 5000
 -- 2.0e8
 --
+-- and for 4000 ps:
+--
+-- >>> periodToHz 4000
+-- 2.5e8
+--
 -- __NB__: This function is /not/ synthesizable
 -- __NB__: This function is lossy. I.e., hzToPeriod . periodToHz /= id.
 periodToHz :: Natural -> Double
-periodToHz period = 1.0 / (1.0e-12 * fromIntegral period)
+periodToHz period = fromRational (1.0 / (1.0e-12 * fromIntegral period) :: Rational)
